@@ -56,10 +56,12 @@ podman run --rm --device /dev/dri --group-add keep-groups \
 `/etc/llama-server.env` (trocar de modelo = editar aqui e reiniciar):
 ```
 MODEL=Huihui-Qwen3.5-9B-abliterated.i1-Q6_K.gguf
-CTX=16384
+CTX=65536
 PORT=8080
-EXTRA=-ngl 99 -fa on -ctk q8_0 -ctv q8_0
+EXTRA=-ngl 99 -fa on -ctk q8_0 -ctv q8_0 -np 1 --reasoning off --keep 256
 ```
+Custo do contexto: 64k com KV `q8_0` consumiu só **0,64 GiB** de GTT
+(7,20 -> 7,84 de 12).
 
 Duas pegadinhas na unit systemd:
 - **`$EXTRA`, não `${EXTRA}`**: no systemd `$VAR` faz word-splitting e
@@ -67,6 +69,69 @@ Duas pegadinhas na unit systemd:
 - `--no-mmap` não existe nessa build; e mmap é desejável aqui (economiza RAM).
 
 `systemctl enable --now llama-server`, depois `curl localhost:8080/health`.
+
+### Contexto: três armadilhas que fazem "estourar o tempo todo"
+
+**1. O `-np` default fatia o contexto.** Com `-c 16384` e `-np` em auto o servidor
+cria 4 slots e divide: **4.096 tokens efetivos por conversa**. Use `-np 1` para
+uso pessoal — o `/props` deve mostrar `slots: 1`.
+
+**2. O Qwen3.5 é um modelo *thinking*.** Sem controle, ele gasta centenas de
+tokens raciocinando antes de responder — e pode devolver `content` **vazio** com
+`finish_reason: length`, porque o orçamento acabou no raciocínio. Medido: pedir
+"diga apenas: ola" consumiu **300 tokens** e 1044 caracteres de
+`reasoning_content`, com `content` vazio. Com `--reasoning off`: **2 tokens** e
+`content = "ola"`. Para tarefas complexas, troque por `--reasoning on`.
+
+**3. `--context-shift` não funciona com esse modelo.** A flag é aceita e o
+llama.cpp a desativa sozinho:
+```
+W common_init_: KV cache shifting is not supported for this context, disabling...
+```
+Não é erro de config. Testei a hipótese de que o KV quantizado (`-ctk q8_0`)
+impedia — **não é**: com KV `f16` dá a mesma mensagem. É a arquitetura do modelo
+(atenção com janela deslizante), para a qual `llama_memory_can_shift` é falso.
+
+### O que acontece quando o contexto acaba
+
+São **dois** comportamentos distintos:
+
+**Conversa que cresceu até encher** — erro só naquela requisição, servidor
+intacto, modelo continua carregado:
+```
+error: task id = 2041, error: Context size has been exceeded.
+```
+A requisição seguinte funciona normalmente. O que fica inutilizável é aquela
+conversa (o histórico já não cabe); **conversa nova resolve na hora**.
+
+**Prompt gigante de uma vez** (colar um documento de centenas de KB) — sem
+proteção, isso **não** dá erro de contexto: o servidor tenta alocar tudo antes de
+descobrir que não cabe e o **OOM killer do kernel mata o processo**:
+```
+Out of memory: Killed process (llama-server) total-vm:18048040kB
+```
+Pior: o OOM killer é **global** e escolhe a vítima pelo consumo — podia matar o
+Steam ou algo do sistema em vez do servidor.
+
+A proteção é limitar a memória do container na unit:
+```
+--memory=11g --memory-swap=11g
+```
+Com isso o estouro fica contido e vira um erro limpo (testado com 90k tokens):
+```json
+{"error":{"message":"request (90013 tokens) exceeds the available context size
+ (65536 tokens), try increasing it","type":"exceed_context_size_error"}}
+```
+Servidor sobrevive, `restarts: 0`, próxima requisição normal.
+
+### Limpar o contexto
+A WebUI é **stateless do lado do servidor**: guarda a conversa no navegador e
+reenvia o histórico inteiro a cada mensagem. "Nova conversa" na WebUI descarta o
+histórico e resolve. O cache de KV do slot é outra coisa, e se limpa por API:
+```bash
+curl -X POST "http://<ip>:8080/slots/0?action=erase"
+```
+Necessário para medições comparáveis; no uso normal, a WebUI basta.
 
 ### Modo agente
 `--agent` liga o proxy CORS **e todas** as built-in tools (`read_file`,
@@ -136,3 +201,18 @@ sudo rm -f /etc/systemd/system/llama-server.service /etc/llama-server.env
 sudo rpm-ostree kargs --delete=ttm.pages_limit=4194304 \
   --delete=ttm.page_pool_size=4194304 --delete=amdgpu.gttsize=12288
 ```
+
+## Cuidado: um modelo por vez
+
+A GPU tem 12 GiB de GTT e o modelo ocupa 6,85. Subir um **segundo** servidor com
+o mesmo modelo estoura, e o efeito não é um erro limpo — derruba o contexto
+Vulkan do servidor que já estava rodando:
+
+```
+W ggml_vulkan: Failed to allocate pinned memory (vk::Device::allocateMemory:
+               ErrorOutOfDeviceMemory)
+E llama_model_load: error loading model: vk::Queue::submit: ErrorDeviceLost
+```
+
+Antes de testar outra configuração, pare o serviço (`systemctl stop llama-server`)
+ou confira `podman ps` por containers órfãos.
