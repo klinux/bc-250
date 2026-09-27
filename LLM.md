@@ -216,3 +216,64 @@ E llama_model_load: error loading model: vk::Queue::submit: ErrorDeviceLost
 
 Antes de testar outra configuração, pare o serviço (`systemctl stop llama-server`)
 ou confira `podman ps` por containers órfãos.
+
+## Jogar e rodar LLM na mesma placa
+
+A memória é **unificada**: os 16 GB são os mesmos para CPU, GPU e o modelo. Com o
+modelo carregado sobram menos de 4 GiB, e um jogo AAA não entra.
+
+Medido:
+
+| | llama-server ativo | parado |
+|---|---|---|
+| RAM disponível | **3.985 MiB** | **12.413 MiB** |
+| GTT em uso | 8,36 GiB | 0,28 GiB |
+
+### O sintoma, e por que engana
+
+God of War ficava reiniciando. Parecia fonte, CU defeituoso ou incompatibilidade
+— era só falta de RAM:
+
+```
+Out of memory: Killed process 10798 (GoW.exe) total-vm:22626396kB
+gamescope-session-plus: Failed with result 'oom-kill'
+```
+
+Como diferenciar sem chutar:
+- **fonte** → o boot anterior termina **abruptamente**. Se o log mostra
+  `Unmounting...` / `plymouth-poweroff`, houve desligamento limpo: **não é fonte**.
+- **CU defeituoso** → `GPU reset`, `ring timeout`, `hang` em `journalctl -k`.
+  Ausência disso descarta CU.
+- **OOM** → `oom-kill` e `Killed process` nomeando o executável do jogo.
+
+O gamescope marca o jogo com `oom_score_adj: 900`, então **o jogo é a vítima
+preferencial** do OOM killer. É por isso que o Steam volta em vez de a máquina
+travar — e é por isso que o sintoma parece "o jogo não roda".
+
+### Solução: `llm-gameguard`
+
+Serviço que para o llama-server enquanto um jogo roda e religa depois:
+
+| Arquivo | Papel |
+|---|---|
+| `/usr/local/bin/llm-gameguard` | loop de detecção (5 s), grace de 20 s para religar |
+| `/etc/systemd/system/llm-gameguard.service` | enabled, sobe no boot |
+| `/usr/local/bin/llm-off` | para o LLM **e** suspende o guard (controle manual) |
+| `/usr/local/bin/llm-on` | religa os dois e espera o modelo carregar |
+
+Detecção: processo com `steamapps/common` na cmdline, ou um `wineserver` vivo
+(Proton). O flag de estado fica em `/run`, então um boot sempre começa limpo.
+
+Validado: jogo detectado -> `llama-server` parado, **12.383 MiB** livres; jogo
+encerrado -> religado em ~20 s. Revalidado após reboot.
+
+```bash
+journalctl -t llm-gameguard -f     # acompanhar as trocas
+```
+
+### Pendente: swap em disco
+O swap atual é **zram de 7,4 GiB** — que comprime *dentro da RAM*, ou seja não
+adiciona memória: consome RAM para comprimir. Quando a RAM acaba, ele não salva.
+A doc da BC-250 ainda lista "zram incompatível com VRAM 512M dinâmico" como fonte
+de instabilidade. Com 1,8 TB de NVMe livre, um swapfile de ~8 GiB daria folga real
+(o jogo perderia fluidez em vez de morrer, mesmo esquecendo de parar o LLM).

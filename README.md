@@ -96,7 +96,15 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
 - 8 cores ativos: `CoreVar=0x01`, `AcpiVar=0x01`, `nproc=16`. Máscara de fábrica
   aprendida = `0x77`.
 
+## Jogos
+- Memória unificada: **jogo e LLM não cabem juntos**. O `llm-gameguard` para o
+  llama-server automaticamente quando um jogo sobe (libera 8,4 GiB) e religa
+  depois. Atalhos manuais: `llm-off` / `llm-on`. Ver [LLM.md](LLM.md).
+- God of War "reiniciando" era **OOM killer matando o jogo**, não fonte nem CU.
+  O gamescope marca o jogo com `oom_score_adj: 900`, então ele é sempre a vítima.
+
 ## Pendente
+- [ ] Swap em disco: o swap atual é zram (comprime na RAM, não adiciona memória)
 - [ ] Telemetria de clock por sysfs (`pp_dpm_sclk`, `gpu_busy_percent`) segue
   inútil com 8 cores — não impede o governor, que fala com o SMU direto
 - [ ] Cooling do backplate (GDDR6): pads 2 mm + dissipador, nada condutivo
