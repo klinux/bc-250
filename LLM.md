@@ -68,6 +68,18 @@ Duas pegadinhas na unit systemd:
 
 `systemctl enable --now llama-server`, depois `curl localhost:8080/health`.
 
+### Modo agente
+`--agent` liga o proxy CORS **e todas** as built-in tools (`read_file`,
+`file_glob_search`, `grep_search`, ...). O upstream avisa: *"do not enable in
+untrusted environments"*. Como o server escuta em `0.0.0.0` sem autenticação,
+qualquer host da LAN pode usar essas tools — feche com `--api-key <segredo>`.
+
+Para dar acesso sem liberar tudo, prefira `--tools` com uma lista enxuta
+(ex.: `--tools grep_search,read_file`) em vez de `--agent`, que habilita todas.
+
+> `--model` (ou `-m`) é apenas o caminho do GGUF. Não tem relação com limitar o
+> que o agente lê — isso é o que `--tools` controla.
+
 ## 4. Números medidos (Qwen3.5-9B abliterated Q6_K, 24 CU)
 
 | Métrica | Valor |
@@ -79,6 +91,11 @@ Duas pegadinhas na unit systemd:
 | GPU | 74 W, 67 °C |
 
 Com o unlock de 40 CU a expectativa é +32% geração / +50% prefill.
+
+> **Não instale o governor de GPU esperando ganho aqui.** Com 8 cores ativos ele
+> fica cego (telemetria do SMU quebrada) e a geração cai para 15 tok/s — ou 5,8
+> com `method = "kernel"`. Detalhes e medições em
+> [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md).
 
 ## 5. Escolha de modelo: por que MoE
 

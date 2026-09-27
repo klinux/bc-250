@@ -98,9 +98,13 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
 
 ## Pendente
 - [ ] Unlock 24 -> 40 CU (patch de kernel; hoje: `active_cu_number 24`)
-- [ ] Ligar **SMU Patch** no setup da BIOS (`MeiMeiDXEv3SmuPatchVar=0x00`): sem ele
-  a telemetria de clock da GPU reporta lixo (`pp_dpm_sclk` mostra 29-100 MHz
-  enquanto a GPU puxa 74 W a 67 °C) e `gpu_busy_percent` vem vazio
-- [ ] Governor `cyan-skillfish-governor-smu` (GPU não escala sem ele)
+- [x] **SMU Reporting Patch** testado e **revertido**: não corrige a telemetria e
+  zera a leitura de potência. Deixe desligado.
+- [ ] **Cooling antes dos 40 CU**: 81 °C GPU / 80 °C CPU sob carga, sem margem
+  para os +30 W do unlock. Dissipador stock é para fluxo de rack — fan sem
+  shroud rende pouco.
+- [x] Governor `cyan-skillfish-governor-smu`: instalado mas **desabilitado de
+  propósito** — com 8 cores a telemetria do SMU quebra, o governor fica cego e a
+  inferência cai de 34 para 15 tok/s. Ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md)
 - [x] TTM/GTT: 7,4 -> 12,0 GiB via kargs (ver [LLM.md](LLM.md))
 - [x] llama.cpp + Vulkan + Qwen3.5-9B: 34,8 tok/s (ver [LLM.md](LLM.md))
