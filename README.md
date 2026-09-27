@@ -97,7 +97,10 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
   aprendida = `0x77`.
 
 ## Pendente
-- [ ] Unlock 24 -> 40 CU (patch de kernel; no Bazzite usar a mesma estratégia do WiFi)
+- [ ] Unlock 24 -> 40 CU (patch de kernel; hoje: `active_cu_number 24`)
+- [ ] Ligar **SMU Patch** no setup da BIOS (`MeiMeiDXEv3SmuPatchVar=0x00`): sem ele
+  a telemetria de clock da GPU reporta lixo (`pp_dpm_sclk` mostra 29-100 MHz
+  enquanto a GPU puxa 74 W a 67 °C) e `gpu_busy_percent` vem vazio
 - [ ] Governor `cyan-skillfish-governor-smu` (GPU não escala sem ele)
-- [ ] TTM `pages_limit` (GTT preso em 7,4 GiB = metade da RAM, default do kernel)
-- [ ] llama.cpp + Vulkan e o modelo
+- [x] TTM/GTT: 7,4 -> 12,0 GiB via kargs (ver [LLM.md](LLM.md))
+- [x] llama.cpp + Vulkan + Qwen3.5-9B: 34,8 tok/s (ver [LLM.md](LLM.md))
