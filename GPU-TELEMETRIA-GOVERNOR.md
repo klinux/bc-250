@@ -1,121 +1,108 @@
-# O unlock de 8 cores quebra a telemetria do SMU — e isso inviabiliza o governor
+# Governor de GPU na BC-250: o que quebra, o que não, e um erro meu
 
 Medido em 27/set/2026: BC-250, Bazzite Deck 44, kernel 7.2.4, BIOS MeiMeiDXE v3
-(8 cores + ACPI Patch), 24 CU, `cyan-skillfish-governor-smu` v0.4.13.
+(8 cores + ACPI Patch), 40 CU, `cyan-skillfish-governor-smu` v0.4.13.
 
-## O sintoma
+## Conclusão primeiro
 
-Depois de habilitar o Core Unlock, a telemetria da GPU passa a reportar lixo:
+**O governor funciona com 8 cores ativos.** Se você leu em algum lugar (inclusive
+numa versão anterior deste arquivo) que o unlock de 8 cores inviabiliza o
+governor, está errado — eu mesmo escrevi isso e a causa era outra.
+
+**A armadilha é `fix-freq = true`.** Habilitar essa opção faz o governor
+**descartar silenciosamente o resto do config** e cair em defaults conservadores.
+Deixe em `false`, que é o default do pacote.
+
+## O sintoma real
+
+Com `fix-freq = true`, o governor loga tudo como ausente, mesmo estando no arquivo:
+
+```
+WARN config] load-target.upper is missing , using default 0.95
+WARN config] safe-points undefined, using conservative defaults:
+         * 350 MHz @ 700 mV
+         * 2000 MHz @ 1000 mV
+WARN config] frequency-range.min is missing , disabled
+ERROR mount --bind /dev/shm/patched_gpu_metrics
+      /sys/bus/pci/devices/0000:01:00.0/gpu_metrics failed: exit status: 32
+```
+
+Com `fix-freq = false` (mesmo arquivo, só essa linha diferente):
+
+```
+INFO config] allowed frequency range 500..=2000
+INFO config] initial frequency range: 1000..=1850
+```
+
+Zero warnings, zero erro de mount. Confirmado por `diff` contra o config extraído
+do RPM: **a única diferença entre funcionar e não funcionar era essa linha.**
+
+## Impacto medido (`llama-bench`, Qwen3.5-9B Q6_K, `-p 512 -n 128 -r 3`)
+
+| Configuração | pp512 | tg128 |
+|---|---|---|
+| 24 CU, sem governor | 206,14 ± 0,06 | 38,23 ± 0,19 |
+| 40 CU, sem governor | 332,85 ± 0,05 | 46,42 ± 0,09 |
+| **40 CU + governor** | **400,12 ± 0,22** | **47,84 ± 0,05** |
+| 40 CU, governor com `fix-freq=true` | ~1 (colapso) | 15,3 |
+| 40 CU, governor com `method="kernel"` | ~1 | 5,8 |
+
+Ganho total sobre o estoque: **+94% de prefill e +25% de geração.**
+O governor sozinho adiciona +20% de prefill sobre os 40 CU.
+
+Consumo em idle caiu de ~60 W para **41 W**; temperatura de 58 para **52 °C**.
+
+## O que continua quebrado (e não tem solução aqui)
+
+A telemetria de clock por sysfs segue inútil com 8 cores:
 
 ```
 $ cat /sys/class/drm/card*/device/pp_dpm_sclk
-0: 1000Mhz
-1: 26Mhz *        <- deveria ser 1500Mhz
-2: 2000Mhz
-
+1: 100Mhz *          # lixo; antes do unlock de 8 cores reportava 1500Mhz
 $ cat /sys/class/drm/card*/device/gpu_busy_percent
-                  <- vazio
+                     # vazio
 ```
 
-Antes do unlock, o mesmo comando reportava `1: 1500Mhz *` corretamente.
-A causa é conhecida: com 8 cores as arrays do SMU deslocam o campo
-`GfxclkFrequency` na tabela de telemetria.
+O unlock de 8 cores desloca `GfxclkFrequency` na tabela de telemetria do SMU.
+Isso **não impede o governor de funcionar** — ele conversa com o SMU direto
+(`set-method = "smu"`, e o log confirma `SMU communication verified`).
 
-## Por que isso importa: o governor fica cego
-
-O `cyan-skillfish-governor-smu` detecta carga por `method = "busy-flag"`, que lê
-justamente `gpu_busy_percent`. Sem esse sinal ele não sobe o clock — e o efeito
-na inferência é brutal. Mesmo prompt, mesmo modelo (Qwen3.5-9B Q6_K, 24 CU):
-
-| Configuração | Prompt | Geração |
-|---|---|---|
-| **Sem governor** | 58,3 tok/s | **33,9 tok/s** |
-| Governor, `method = "busy-flag"` | 1,3 | 15,3 |
-| Governor, `method = "kernel"` | 0,9 | **5,8** |
-
-6× mais lento no pior caso, e a temperatura subiu a 85 °C.
-
-## Três tentativas de correção, nenhuma funcionou
-
-**1. `SMU Reporting Patch` da BIOS** (`MeiMeiDXEv3SmuPatchVar`) — o mod traz um
-driver DXE exatamente pra isso. Não corrigiu: mudou o desalinhamento em vez de
-resolver, e **zerou a leitura de potência**, que era a única confiável.
+O `fix-freq` existe justamente para corrigir esse campo, e é ele que está com
+bug nesta versão. O **`SMU Reporting Patch` da BIOS** também não resolve:
 
 | Leitura | Patch OFF | Patch ON |
 |---|---|---|
 | `pp_dpm_sclk` | 26-100 MHz ❌ | 6425-6925 MHz ❌ |
 | `power1_average` | **65-74 W** ✅ | **0 W** ❌ |
-| `gpu_busy_percent` | vazio | vazio |
 
-6900 MHz é fisicamente impossível nessa GPU (teto ~2300 MHz; acima de 2400 o OCP
-trava a placa). Conclusão: deixe o patch **desligado** — ao menos a potência funciona.
+6900 MHz é impossível nessa GPU (teto ~2300 MHz). Deixe o patch **desligado**:
+ao menos a leitura de potência funciona, e é a que serve para tuning.
 
-**2. `fix-freq = true`** no `config.toml` do governor — sem efeito.
+## Config recomendada
 
-**3. `method = "kernel"`** em vez de `busy-flag` — piorou (5,8 tok/s).
-
-## A causa raiz do governor: `mount --bind` em /sys falha
-
-```
-Error: Io(Custom { kind: Other, error:
-  "mount --bind /dev/shm/patched_gpu_metrics
-   /sys/bus/pci/devices/0000:01:00.0/gpu_metrics failed: exit status: 32" })
-```
-
-O `fix-metrics = true` funciona fazendo **bind-mount de um `gpu_metrics`
-corrigido sobre o do sysfs**. Isso falha nesta máquina (exit 32), então o
-governor nunca consegue enxergar as métricas corretas. Suspeita: ostree/SELinux
-ou restrição de bind mount sobre `/sys` — não investigado a fundo.
-
-## Cadeia causal
-
-```
-unlock de 8 cores
-  -> desloca campos na tabela de telemetria do SMU
-  -> gpu_busy_percent vazio, pp_dpm_sclk com lixo
-  -> governor nao le carga (e o fix-metrics nao consegue montar)
-  -> clock nao sobe
-  -> inferencia 6x mais lenta
-```
-
-## Estado recomendado hoje
-
-**Governor instalado mas `disabled`.** A GPU fica no DPM state 1 sem escalonamento,
-o que custa consumo em idle — mas entrega 34 tok/s em vez de 15.
+Use o config que vem no pacote, sem editar. Se quiser conferir:
 
 ```bash
-sudo systemctl disable --now cyan-skillfish-governor-smu
+rpm -V cyan-skillfish-governor-smu      # S.5....T. = config modificado
+sudo systemctl start cyan-skillfish-governor-smu
+journalctl -u cyan-skillfish-governor-smu -b | grep -iE "WARN|error"
 ```
 
-O trade-off real, ainda não resolvido: **8 cores** ou **governor funcionando**.
-Quem prioriza GPU (jogos, inferência) talvez prefira 6 cores + governor;
-quem prioriza CPU fica com 8 cores sem governor.
+**Qualquer `WARN ... is missing` significa que o config não foi aceito.** Um
+governor saudável loga só as duas linhas de `frequency range` e nada mais.
 
-## Baseline térmico (dissipador stock, aletas fechadas, 2x fan 120 sem shroud)
-
-Sob carga mista (Steam + modelo carregado), **sem throttle ativo**:
-
-| Sensor | Valor | Target |
-|---|---|---|
-| GPU `edge` | 81 °C | 65-80 °C gaming, máx 90 |
-| CPU `Tctl` | 80 °C | 70-85 °C, máx 95 |
-| `PPT` | 82 W (média 58,6) | — |
-| `vddgfx` | 912 mV | — |
-| CPU clock real | **3493 MHz** | — |
-
-> `scaling_max_freq` diz 3200 MHz, mas isso é o P-state base: o boost real chega
-> a 3493 MHz com 8 cores. Não confunda um com o outro.
-
-Sem margem para os 40 CU (+30 W / +4 °C pelas medições da comunidade), que
-levariam a ~85 °C. Prioridade é o cooling: o dissipador stock foi feito para
-fluxo de rack, e fan sem shroud deixa o ar escapar pelas laterais (shroud rende
-20-30 °C; endireitar aletas tortas, 5-10 °C).
-
-## Como medir
-
-Use `sensors`, **não** só o `hwmon` do amdgpu:
+Para restaurar o original depois de estragar:
 ```bash
-sudo sensors | grep -E "edge:|Tctl:|PPT:|vddgfx:"
+cd /tmp && dnf download cyan-skillfish-governor-smu
+rpm2cpio cyan-skillfish-governor-smu-*.x86_64.rpm | cpio -idm
+sudo cp etc/cyan-skillfish-governor-smu/config.toml /etc/cyan-skillfish-governor-smu/
+sudo systemctl restart cyan-skillfish-governor-smu
 ```
-E lembre que `gpu_busy_percent` e `pp_dpm_sclk` **não são confiáveis** com 8
-cores — não tire conclusão de performance a partir deles.
+
+## Lição de método
+
+Duas conclusões erradas nesta investigação, pelo mesmo motivo: **mudei uma
+variável e culpei outra.** Habilitei `fix-freq` junto de ativar o governor, vi a
+performance colapsar e concluí que o governor era incompatível com 8 cores.
+O certo é uma variável por vez, e ler os warnings antes de teorizar — eles
+diziam exatamente o que estava errado desde a primeira execução.

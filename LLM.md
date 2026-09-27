@@ -84,8 +84,8 @@ Para dar acesso sem liberar tudo, prefira `--tools` com uma lista enxuta
 
 | Métrica | Valor |
 |---|---|
-| Prompt (prefill) | 62,9 tok/s (24 CU) -> **75,9** (40 CU) |
-| Geração | 34,8 tok/s (24 CU) -> **42,9** (40 CU) |
+| Prompt (prefill) | 62,9 (24 CU) -> 75,9 (40 CU) |
+| Geração | 34,8 (24 CU) -> **42,9** (40 CU) |
 | GTT usado | 7,57 / 12,00 GiB (modelo 6,85 + KV q8_0 @ 16k) |
 | RAM total usada | 10 / 14 GiB |
 | GPU | 74 W, 67 °C |
@@ -93,15 +93,18 @@ Para dar acesso sem liberar tudo, prefira `--tools` com uma lista enxuta
 Números limpos de `llama-bench` (a forma correta de medir — ver
 [CU-UNLOCK-40.md](CU-UNLOCK-40.md)): pp512 206 -> **333 t/s** (+61,5%),
 tg128 38,2 -> **46,4 t/s** (+21,4%) com o unlock de 40 CU aplicado.
+Com o governor ativo por cima: pp512 **400,1 t/s** e tg128 **47,8 t/s** —
+**+94% e +25%** sobre o estoque.
 
 > **Não meça pelo `llama-server`.** O contexto acumula no slot e a geração
 > desacelera; `cache_prompt: false` não zera isso (use
 > `POST /slots/0?action=erase`), e repetir o mesmo prompt faz o prefill medir
 > 4 tokens em vez de 1900. Isso me levou a duas conclusões erradas.
 
-> **Não instale o governor de GPU esperando ganho aqui.** Com 8 cores ativos ele
-> fica cego (telemetria do SMU quebrada) e a geração cai para 15 tok/s — ou 5,8
-> com `method = "kernel"`. Detalhes e medições em
+> **Instale o governor**, mas não toque no `fix-freq`. Ele rende +20% de prefill
+> e derruba o idle de 60 para 41 W. Habilitar `fix-freq = true` faz o governor
+> descartar o config inteiro e a performance colapsar — foi o que me levou a
+> concluir errado que ele era incompatível com 8 cores. Medições em
 > [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md).
 
 ## 5. Escolha de modelo: por que MoE

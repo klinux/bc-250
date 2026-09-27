@@ -97,8 +97,8 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
   aprendida = `0x77`.
 
 ## Pendente
-- [ ] Telemetria de clock da GPU segue quebrada pelo unlock de 8 cores (sem
-  solução conhecida; ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md))
+- [ ] Telemetria de clock por sysfs (`pp_dpm_sclk`, `gpu_busy_percent`) segue
+  inútil com 8 cores — não impede o governor, que fala com o SMU direto
 - [ ] Cooling do backplate (GDDR6): pads 2 mm + dissipador, nada condutivo
 - [x] **Unlock 24 -> 40 CU**: aplicado via `bc250-cu-live-manager` (runtime, sem
   patch de kernel — o caminho que funciona em ostree). **+61,5% prefill / +21,4%
@@ -108,8 +108,10 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
 - [x] **Cooling**: aletas abertas -> 79-81 °C caiu para **58-65 °C** sob carga
   (~15-20 °C). Era pré-requisito: com as aletas fechadas o unlock de CU levaria
   a ~85 °C, onde o throttle começa.
-- [x] Governor `cyan-skillfish-governor-smu`: instalado mas **desabilitado de
-  propósito** — com 8 cores a telemetria do SMU quebra, o governor fica cego e a
-  inferência cai de 34 para 15 tok/s. Ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md)
+- [x] Governor `cyan-skillfish-governor-smu`: **ativo**. Funciona com 8 cores —
+  a armadilha é `fix-freq = true`, que faz o governor descartar o config inteiro.
+  Deixe o default. Rende +20% de prefill e idle de 60 -> 41 W.
+  Ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md)
 - [x] TTM/GTT: 7,4 -> 12,0 GiB via kargs (ver [LLM.md](LLM.md))
-- [x] llama.cpp + Vulkan + Qwen3.5-9B: **42,9 tok/s** com 40 CU (ver [LLM.md](LLM.md))
+- [x] llama.cpp + Vulkan + Qwen3.5-9B: **47,8 tok/s** (40 CU + governor).
+  Sobre o estoque: **+94% prefill / +25% geração**. Ver [LLM.md](LLM.md)
