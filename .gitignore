@@ -1,0 +1,17 @@
+# ROMs de BIOS e artefatos de download — NÃO versionar:
+# - são binários de terceiros (redistribuição sem licença clara)
+# - 1,1 GB no total
+# - um backup da SUA placa contém dados específicos dela (UUID, MAC, seriais)
+# O README diz de onde baixar cada um.
+downloads/
+usb/Firmware/
+usb/Fallback/
+usb/Firmware_Backup/
+*.ROM
+*.rom
+*.bin
+*.7z
+*.zip
+*.gguf
+*.efi
+*.EFI
