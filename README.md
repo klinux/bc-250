@@ -97,14 +97,19 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
   aprendida = `0x77`.
 
 ## Pendente
-- [ ] Unlock 24 -> 40 CU (patch de kernel; hoje: `active_cu_number 24`)
+- [ ] Telemetria de clock da GPU segue quebrada pelo unlock de 8 cores (sem
+  solução conhecida; ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md))
+- [ ] Cooling do backplate (GDDR6): pads 2 mm + dissipador, nada condutivo
+- [x] **Unlock 24 -> 40 CU**: aplicado via `bc250-cu-live-manager` (runtime, sem
+  patch de kernel — o caminho que funciona em ostree). **+61,5% prefill / +21,4%
+  geração** medidos com `llama-bench`. Ver [CU-UNLOCK-40.md](CU-UNLOCK-40.md)
 - [x] **SMU Reporting Patch** testado e **revertido**: não corrige a telemetria e
   zera a leitura de potência. Deixe desligado.
-- [ ] **Cooling antes dos 40 CU**: 81 °C GPU / 80 °C CPU sob carga, sem margem
-  para os +30 W do unlock. Dissipador stock é para fluxo de rack — fan sem
-  shroud rende pouco.
+- [x] **Cooling**: aletas abertas -> 79-81 °C caiu para **58-65 °C** sob carga
+  (~15-20 °C). Era pré-requisito: com as aletas fechadas o unlock de CU levaria
+  a ~85 °C, onde o throttle começa.
 - [x] Governor `cyan-skillfish-governor-smu`: instalado mas **desabilitado de
   propósito** — com 8 cores a telemetria do SMU quebra, o governor fica cego e a
   inferência cai de 34 para 15 tok/s. Ver [GPU-TELEMETRIA-GOVERNOR.md](GPU-TELEMETRIA-GOVERNOR.md)
 - [x] TTM/GTT: 7,4 -> 12,0 GiB via kargs (ver [LLM.md](LLM.md))
-- [x] llama.cpp + Vulkan + Qwen3.5-9B: 34,8 tok/s (ver [LLM.md](LLM.md))
+- [x] llama.cpp + Vulkan + Qwen3.5-9B: **42,9 tok/s** com 40 CU (ver [LLM.md](LLM.md))
