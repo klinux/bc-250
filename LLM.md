@@ -271,9 +271,44 @@ encerrado -> religado em ~20 s. Revalidado após reboot.
 journalctl -t llm-gameguard -f     # acompanhar as trocas
 ```
 
-### Pendente: swap em disco
-O swap atual é **zram de 7,4 GiB** — que comprime *dentro da RAM*, ou seja não
-adiciona memória: consome RAM para comprimir. Quando a RAM acaba, ele não salva.
-A doc da BC-250 ainda lista "zram incompatível com VRAM 512M dinâmico" como fonte
-de instabilidade. Com 1,8 TB de NVMe livre, um swapfile de ~8 GiB daria folga real
-(o jogo perderia fluidez em vez de morrer, mesmo esquecendo de parar o LLM).
+### Rede de segurança: swapfile em disco
+
+O zram (7,4 GiB) comprime *dentro da RAM* — não adiciona memória, consome RAM
+para comprimir. Um swapfile em disco adiciona memória virtual real.
+
+`/var` é **btrfs**, e swapfile em btrfs tem regras (sem CoW, sem compressão,
+extents contíguos). O `mkswapfile` resolve tudo:
+
+```bash
+sudo mkdir -p /var/swap && sudo chmod 700 /var/swap
+sudo btrfs filesystem mkswapfile --size 12g --uuid clear /var/swap/swapfile
+sudo chmod 600 /var/swap/swapfile
+sudo swapon --priority 10 /var/swap/swapfile
+echo '/var/swap/swapfile none swap sw,pri=10 0 0' | sudo tee -a /etc/fstab
+```
+
+**Prioridade 10 é deliberada**: menor que a do zram (100). O kernel enche o zram
+primeiro (rápido, comprimido) e só recorre ao disco em emergência — o NVMe não
+entra no caminho quente, então não gera stutter no uso normal.
+
+Resultado: **19 GiB de swap** (7,4 zram + 12 disco). `vm.swappiness` fica em 180,
+o default do Fedora com zram; não mexa, porque a prioridade já resolve a ordem.
+
+Validado com teste de pressão (6 GiB alocados e tocados, `oom_score_adj: 900`
+como o gamescope marca os jogos, com o LLM carregado):
+
+| | Antes | Depois |
+|---|---|---|
+| OOM kills | 1 (GoW.exe morto) | **0** |
+| swap usado no pico | — | 732 MiB (só zram; disco 0 B) |
+| llama-server | — | sobreviveu |
+
+### Guard e swap são complementares, não alternativas
+- O **guard** evita o problema: libera 8,4 GiB antes do jogo subir, e o jogo roda
+  com memória de sobra e sem swap no caminho.
+- O **swap** é a rede: se o guard não reconhecer algum jogo (lançador fora do
+  padrão, executável fora de `steamapps/common`), você perde fluidez em vez de
+  perder o jogo.
+
+Jogar com o LLM carregado *funciona* agora, mas com swap ativo no caminho quente —
+prefira deixar o guard fazer o trabalho.

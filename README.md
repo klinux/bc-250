@@ -102,9 +102,10 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
   depois. Atalhos manuais: `llm-off` / `llm-on`. Ver [LLM.md](LLM.md).
 - God of War "reiniciando" era **OOM killer matando o jogo**, não fonte nem CU.
   O gamescope marca o jogo com `oom_score_adj: 900`, então ele é sempre a vítima.
+- Rede de segurança: **swapfile btrfs de 12 GiB** em prioridade 10 (abaixo do
+  zram), totalizando 19 GiB. Teste de pressão: 0 OOM kills onde antes havia 1.
 
 ## Pendente
-- [ ] Swap em disco: o swap atual é zram (comprime na RAM, não adiciona memória)
 - [ ] Telemetria de clock por sysfs (`pp_dpm_sclk`, `gpu_busy_percent`) segue
   inútil com 8 cores — não impede o governor, que fala com o SMU direto
 - [ ] Cooling do backplate (GDDR6): pads 2 mm + dissipador, nada condutivo
