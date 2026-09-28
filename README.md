@@ -88,6 +88,23 @@ echo 4194304 | sudo tee /sys/module/ttm/parameters/page_pool_size
 - Escolhida: `Firmware/BC250_3.00_MeiMeiDXEv3-SteamOS.M` (`menu 03`).
 - Não desmontado; confiança = estrutura + strings + histórico público do repo.
 
+## Arquivos de configuração
+Tudo que está rodando de verdade na placa está versionado em
+[files/](files/), com a árvore espelhando o destino (`files/etc/...` -> `/etc/...`)
+e o passo-a-passo em [files/INSTALL.md](files/INSTALL.md):
+
+| | |
+|---|---|
+| `usr/local/bin/aic8800-load` | carrega o driver WiFi de `/var` no boot |
+| `usr/local/bin/aic8800-rebuild` | recompila o driver após update de kernel |
+| `usr/local/bin/llm-gameguard` | para o LLM quando um jogo sobe |
+| `usr/local/bin/llm-off` / `llm-on` | controle manual do LLM |
+| `etc/llama-server.env` | modelo, contexto, flags |
+| `etc/systemd/system/*.service` | as três units |
+| `etc/udev/rules.d/99-aic8800*.rules` | mode-switch e autosuspend do dongle |
+| `etc/usb_modeswitch.d/1111_1111` | CDBs que tiram o dongle do modo CD-ROM |
+| `etc/NetworkManager/conf.d/99-wifi-powersave.conf` | power save off |
+
 ## Rede (26/set/2026)
 - Ethernet: **Realtek RTL8111/8168 Gigabit** (`10ec:8168`, driver `r8169`) — não é 10/100.
   Com o cabo fora, `ethtool` reporta `10baseT` e `Speed: Unknown!`; isso é o PHY sem

@@ -1,0 +1,14 @@
+[Unit]
+Description=AIC8800D80 USB WiFi driver (out-of-tree, /var)
+After=systemd-modules-load.service
+Before=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/aic8800-load
+ExecStop=/bin/sh -c 'rmmod aic8800_fdrv aic_load_fw aic_zlp_quirk 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Religa o LLM e o guard automatico.
+sudo systemctl start llama-server
+sudo systemctl start llm-gameguard
+echo -n "Carregando o modelo"
+for i in $(seq 1 30); do
+  curl -sf --max-time 3 http://127.0.0.1:8080/health >/dev/null 2>&1 && { echo " -> pronto em http://$(hostname -I | awk '{print $1}'):8080"; exit 0; }
+  echo -n "."; sleep 3
+done
+echo " (ainda carregando; veja: systemctl status llama-server)"

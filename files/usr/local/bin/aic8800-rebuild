@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Recompila o driver AIC8800D80 para o kernel atual. Rode depois de cada
+# atualizacao de kernel (rpm-ostree upgrade), ja no kernel novo.
+set -euo pipefail
+# Ajuste AIC_SRC ou edite aqui: onde o repo do driver foi clonado.
+SRC=${AIC_SRC:-/var/home/kleber/aic8800/aic8800d80-shenmintao}
+K=$(uname -r); KDIR=/usr/src/kernels/$K
+[ -d "$KDIR" ] || { echo "sem headers em $KDIR -- instale kernel-devel-$K" >&2; exit 1; }
+[ -d "$SRC" ]  || { echo "fonte ausente em $SRC" >&2; exit 1; }
+cd "$SRC/drivers/aic8800"
+for d in aic_load_fw aic8800_fdrv aic_zlp_quirk; do
+  make -C "$d" KDIR="$KDIR" clean >/dev/null 2>&1 || true
+  make -C "$d" KDIR="$KDIR" -j"$(nproc)" >/dev/null
+done
+sudo mkdir -p "/var/lib/aic8800/$K"
+sudo install -m 0644 aic_load_fw/aic_load_fw.ko aic8800_fdrv/aic8800_fdrv.ko \
+  aic_zlp_quirk/aic_zlp_quirk.ko "/var/lib/aic8800/$K/"
+sudo restorecon -R /var/lib/aic8800
+sudo systemctl restart aic8800.service
+echo "aic8800: pronto para $K"

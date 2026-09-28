@@ -1,0 +1,6 @@
+# BC-250 / AIC8800D80: impede USB autosuspend no dongle WiFi+BT.
+# O autosuspend (2s por padrao) adiciona latencia no despertar do radio.
+# 8d80 = modo WiFi; 8d81 = modo combo WiFi+BT (apos aic_load_fw).
+# "add|bind": o driver reescreve power/control no bind, entao reaplicamos ali.
+ACTION=="add|bind", SUBSYSTEM=="usb", ATTR{idVendor}=="a69c", ATTR{idProduct}=="8d80", ATTR{power/control}="on"
+ACTION=="add|bind", SUBSYSTEM=="usb", ATTR{idVendor}=="a69c", ATTR{idProduct}=="8d81", ATTR{power/control}="on"

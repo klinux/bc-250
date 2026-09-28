@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Para o LLM manualmente e suspende o guard (para ele nao religar sozinho).
+sudo systemctl stop llm-gameguard llama-server
+echo "LLM parado e guard suspenso. RAM livre:"
+free -h | awk '/^Mem:/ {print "  " $7 " disponivel de " $2}'
+echo "Para voltar: llm-on"

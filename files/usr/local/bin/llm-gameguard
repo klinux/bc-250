@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Para o llama-server enquanto um jogo roda e religa quando ele sai.
+# Motivo: o modelo ocupa ~8,4 GiB dos 14 GiB de RAM unificada. Com ele
+# carregado nao sobra memoria para o jogo, e o OOM killer mata o jogo
+# (o gamescope marca o jogo com oom_score_adj 900, entao ele e a vitima).
+set -u
+SVC=llama-server
+FLAG=/run/llm-gameguard.stopped      # /run: limpo a cada boot
+GRACE=20                             # s sem jogo antes de religar (evita flapping)
+POLL=5
+
+game_running() {
+  # jogos instalados pelo Steam ficam sob steamapps/common
+  pgrep -f 'steamapps/common' >/dev/null 2>&1 && return 0
+  # jogos Windows via Proton mantem um wineserver vivo
+  pgrep -x wineserver         >/dev/null 2>&1 && return 0
+  return 1
+}
+
+idle=0
+while true; do
+  if game_running; then
+    idle=0
+    if systemctl is-active --quiet "$SVC"; then
+      logger -t llm-gameguard "jogo detectado -> parando $SVC (libera ~8,4 GiB)"
+      systemctl stop "$SVC" && : > "$FLAG"
+    fi
+  else
+    if [ -e "$FLAG" ]; then
+      idle=$(( idle + POLL ))
+      if [ "$idle" -ge "$GRACE" ]; then
+        logger -t llm-gameguard "jogo encerrado -> religando $SVC"
+        rm -f "$FLAG"
+        systemctl start "$SVC"
+        idle=0
+      fi
+    fi
+  fi
+  sleep "$POLL"
+done

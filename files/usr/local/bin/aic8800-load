@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Carrega o driver AIC8800D80 a partir de /var (Bazzite/ostree: /usr e read-only).
+set -eu
+K=$(uname -r); D=/var/lib/aic8800/$K
+FW=/var/lib/firmware/aic8800D80
+if [ ! -d "$D" ]; then
+  echo "aic8800: sem modulos compilados para o kernel $K -- rode aic8800-rebuild" >&2
+  exit 1
+fi
+modprobe cfg80211 2>/dev/null || true
+for m in aic_zlp_quirk aic_load_fw aic8800_fdrv; do
+  if lsmod | grep -q "^${m} "; then
+    echo "aic8800: $m ja carregado"
+    continue
+  fi
+  if [ "$m" = aic_load_fw ]; then
+    insmod "$D/$m.ko" aic_fw_path="$FW"
+  else
+    insmod "$D/$m.ko"
+  fi
+  echo "aic8800: $m carregado"
+done
+# Garantia: o driver reescreve power/control no bind e a regra udev pode perder
+# a corrida. Reaplica depois do dongle reenumerar como 8d81 (combo WiFi+BT).
+for _ in $(seq 1 15); do
+  found=0
+  for d in /sys/bus/usb/devices/*; do
+    [ -f "$d/idVendor" ] || continue
+    [ "$(cat "$d/idVendor")" = a69c ] || continue
+    [ -w "$d/power/control" ] || continue
+    echo on > "$d/power/control" 2>/dev/null || true
+    echo "aic8800: autosuspend off em $(basename "$d") ($(cat "$d/idProduct"))"
+    found=1
+  done
+  [ "$found" = 1 ] && break
+  sleep 1
+done

@@ -1,0 +1,28 @@
+[Unit]
+Description=llama.cpp server (Vulkan) na BC-250
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/llama-server.env
+# $EXTRA sem chaves: no systemd "$VAR" faz word-splitting, "${VAR}" nao.
+# --memory: contem o estouro no container. Sem isso, um prompt gigante faz o
+#   OOM killer GLOBAL escolher a vitima pelo consumo -- e pode matar o Steam ou
+#   algo do sistema em vez do servidor.
+ExecStartPre=-/usr/bin/podman rm -f llama-server
+ExecStart=/usr/bin/podman run --rm --name llama-server \
+  --device /dev/dri --group-add keep-groups \
+  --memory=11g --memory-swap=11g \
+  -v ${MODELS_DIR}:/models:z \
+  -p ${PORT}:8080 \
+  --entrypoint /app/llama-server \
+  ghcr.io/ggml-org/llama.cpp:server-vulkan \
+  -m /models/${MODEL} -c ${CTX} --host 0.0.0.0 --port 8080 $EXTRA
+ExecStop=/usr/bin/podman stop -t 10 llama-server
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
