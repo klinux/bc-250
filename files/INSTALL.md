@@ -61,7 +61,7 @@ initramfs); em ostree o caminho é kernel cmdline:
 sudo rpm-ostree kargs \
   --append-if-missing=ttm.pages_limit=4194304 \
   --append-if-missing=ttm.page_pool_size=4194304 \
-  --append-if-missing=amdgpu.gttsize=12288
+  --append-if-missing=amdgpu.gttsize=13824   # 13.5 GiB p/ Coder-30B + CTX 16k (deixa RAM no limite; ver LLM.md)
 sudo systemctl reboot
 ```
 

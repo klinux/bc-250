@@ -21,7 +21,7 @@ arquivo ser lido. O que funciona em ostree é kernel cmdline:
 sudo rpm-ostree kargs \
   --append-if-missing=ttm.pages_limit=4194304 \
   --append-if-missing=ttm.page_pool_size=4194304 \
-  --append-if-missing=amdgpu.gttsize=12288
+  --append-if-missing=amdgpu.gttsize=13824
 sudo systemctl reboot
 ```
 
@@ -207,7 +207,7 @@ Isso vale pra esse modelo, não pra família GLM inteira.
 sudo systemctl disable --now llama-server
 sudo rm -f /etc/systemd/system/llama-server.service /etc/llama-server.env
 sudo rpm-ostree kargs --delete=ttm.pages_limit=4194304 \
-  --delete=ttm.page_pool_size=4194304 --delete=amdgpu.gttsize=12288
+  --delete=ttm.page_pool_size=4194304 --delete=amdgpu.gttsize=13824
 ```
 
 ## Cuidado: um modelo por vez
