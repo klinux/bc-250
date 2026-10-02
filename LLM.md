@@ -57,7 +57,7 @@ podman run --rm --device /dev/dri --group-add keep-groups \
 ```
 MODEL=Huihui-Qwen3.5-9B-abliterated.i1-Q6_K.gguf
 CTX=65536
-PORT=8080
+PORT=80
 EXTRA=-ngl 99 -fa on -ctk q8_0 -ctv q8_0 -np 1 --reasoning off --keep 256
 ```
 Custo do contexto: 64k com KV `q8_0` consumiu só **0,64 GiB** de GTT
@@ -68,7 +68,15 @@ Duas pegadinhas na unit systemd:
   `${VAR}` passa tudo como **um** argumento (dá `invalid argument: -ngl 99 ...`).
 - `--no-mmap` não existe nessa build; e mmap é desejável aqui (economiza RAM).
 
-`systemctl enable --now llama-server`, depois `curl localhost:8080/health`.
+`systemctl enable --now llama-server`, depois `curl localhost/health`.
+
+**Porta 80**: funciona direto porque a unit roda como root (podman *rootful*), e
+só processos privilegiados bindam abaixo de 1024. Num setup *rootless* seria
+preciso baixar `net.ipv4.ip_unprivileged_port_start`. Basta `PORT=80` no env.
+
+> A WebUI é servida **pré-comprimida em gzip**. Um `curl` sem `--compressed`
+> recebe `HTTP 415` com `Error: gzip is not supported by this browser` — não é
+> defeito, é o cliente não anunciar `Accept-Encoding: gzip`. Navegador funciona.
 
 ### Contexto: três armadilhas que fazem "estourar o tempo todo"
 
