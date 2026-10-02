@@ -320,3 +320,27 @@ como o gamescope marca os jogos, com o LLM carregado):
 
 Jogar com o LLM carregado *funciona* agora, mas com swap ativo no caminho quente —
 prefira deixar o guard fazer o trabalho.
+
+
+## Modelo em produção: Qwen3-Coder-30B-A3B abliterated (Q2_K)
+
+Trocado do Qwen3.5-9B em 02/out. MoE de 30B com 3B ativos, focado em código e
+tool calling — serve pentest, scripting e uso geral, num modelo só.
+
+`llama-bench` (40 CU): pp128 **270 t/s**, tg64 **100 t/s**. No servidor, ~85-90
+tok/s de geração. Tool calling (modo Agent) confirmado: devolve `tool_calls`.
+
+### Limites descobertos com este modelo (Vulkan + 40 CU)
+O backend Vulkan fica instável com buffers grandes neste modelo — sempre o mesmo
+sintoma, `device lost on Vulkan0` (crash de GPU, não falta de memória):
+
+| Config | Resultado |
+|---|---|
+| `-ctk/-ctv q8_0` (KV quantizado) | **crasha** no uso sustentado |
+| KV f16, `CTX >= 16384` | **crasha** no warmup (mesmo com `-b 512 -ub 256`) |
+| **KV f16, `CTX=8192`** | **estável**, 85-90 tok/s, 0 crashes |
+
+`llama-bench` passa em qualquer config — só o servidor dispara o bug, porque
+mantém o contexto vivo. Por isso o teto aqui é **8192** (contra 64k que o 9B
+aguentava). Trade-off aceito: contexto menor por um modelo muito mais capaz.
+Se precisar de contexto longo, o 9B em Q6_K era melhor nisso.
