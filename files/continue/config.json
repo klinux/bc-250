@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "title": "Qwen3-Coder-30B (BC-250)",
+      "provider": "openai",
+      "model": "/models/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q2_K.gguf",
+      "apiBase": "http://llm.fuseone.io/v1",
+      "apiKey": "nao-usado",
+      "contextLength": 32768,
+      "completionOptions": { "maxTokens": 4096 }
+    }
+  ]
+}

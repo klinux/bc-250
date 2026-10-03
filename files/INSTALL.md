@@ -105,3 +105,13 @@ cat /sys/bus/usb/devices/*/power/control | sort -u      # on (no dongle)
 curl -s localhost:8080/health                           # {"status":"ok"}
 swapon --show                                           # zram pri 100 + file pri 10
 ```
+
+
+## Continue (painel nativo no VSCode)
+A versao 2.0.0 (build linux-x64) le **`~/.continue/config.json`** no formato com
+`title` (nao o `config.yaml` com `name`, que e de outra versao). Se o Continue
+disser "nenhum modelo configurado", e quase sempre formato errado. Arquivo que
+funciona em [continue/config.json](continue/config.json) -- copie para
+`~/.continue/config.json` e recarregue a janela (Developer: Reload Window).
+Autocomplete fica desligado de proposito: um modelo de chat de 30B faz
+fill-in-the-middle mal.
