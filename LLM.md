@@ -344,3 +344,31 @@ sintoma, `device lost on Vulkan0` (crash de GPU, não falta de memória):
 mantém o contexto vivo. Por isso o teto aqui é **8192** (contra 64k que o 9B
 aguentava). Trade-off aceito: contexto menor por um modelo muito mais capaz.
 Se precisar de contexto longo, o 9B em Q6_K era melhor nisso.
+
+
+## A combinacao que funciona: Coder-30B + KV q4_0 + 32k (03/out)
+
+Resolveu o impasse "modelo bom vs contexto grande". A peca que faltava era o
+**tipo de quantizacao do KV cache** -- credito ao guia akandr/bc250:
+
+| KV cache | Resultado no Coder-30B |
+|---|---|
+| `q8_0` | **device lost** (crash GPU) no uso sustentado |
+| `f16` | nao cabe acima de 8k (fragmentacao de GTT) |
+| **`q4_0`** | **estavel em 32k**, 89-95 tok/s, GTT 11.45/12, RAM livre 1.6 GiB |
+
+`q4_0` ocupa ~1/4 do f16, entao cabe o contexto grande; e ao contrario do
+`q8_0`, nao dispara o device lost. Mantem o gttsize em 12 GiB (seguro) -- nao
+precisa inflar para 13.5.
+
+Config final: `-ctk q4_0 -ctv q4_0`, CTX=32768, modelo Coder-30B Q2_K.
+
+### opencode agentico: funcionando
+Com 32k de contexto o system prompt do opencode (~10k) cabe com folga para
+trabalho multi-etapa. Teste validado: tarefa "crie portscan.py e leia de volta"
+completou -- tools Write + Read executadas, codigo correto, servidor estavel
+(restarts: 0). Era o caso que nunca terminava com 16k.
+
+> Nota sobre o Qwen2.5-Coder-7B: cabe em 64k e roda a Q6, mas emite tool calls
+> em formato XML que o llama.cpp nao parseia -> opencode nao reconhece as tools.
+> Por isso o 30B (tool calling nativo) + q4_0 e a escolha, nao o 7B.

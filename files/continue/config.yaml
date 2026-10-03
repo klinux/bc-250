@@ -10,7 +10,7 @@ models:
     # provider "openai" exige o campo; o servidor nao valida (sem --api-key)
     apiKey: nao-usado
     defaultCompletionOptions:
-      contextLength: 8192
+      contextLength: 32768
       maxTokens: 4096
     # "agent" e o que habilita o modo Agent (tool calling). Sem ele o Continue
     # recusa a tarefa dizendo que precisa do modo agente.
