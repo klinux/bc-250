@@ -372,3 +372,71 @@ completou -- tools Write + Read executadas, codigo correto, servidor estavel
 > Nota sobre o Qwen2.5-Coder-7B: cabe em 64k e roda a Q6, mas emite tool calls
 > em formato XML que o llama.cpp nao parseia -> opencode nao reconhece as tools.
 > Por isso o 30B (tool calling nativo) + q4_0 e a escolha, nao o 7B.
+
+## Teste: familia DeepSeek-V4-Pro-Qwen3.5-9B (07/nov) -- nao adotada
+
+Testei o `DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic` i1-Q6_K (6,85 GiB, 64k de
+contexto) contra o Coder-30B de producao. Codigo gerado rodou em sandbox contra
+testes escondidos. Amostra pequena, e o agente usou arquivos virtuais, nao o
+opencode real.
+
+| Teste | Coder-30B | Heretic 9B |
+|---|---|---|
+| Geracao | **93 tok/s** | 44 tok/s |
+| Raciocinio e matematica | 24/30 | **29/30** |
+| Python escrito do zero | **18/24** | **0/22** |
+| Python com as 2 primeiras linhas prontas | **12/16** | 7/16 |
+| Tool calling simples | 9/9 | 9/9 |
+| Agente lendo CSV (uma tarefa, 6 execucoes) | 0/6, erra a conta | **6/6** |
+| Prompt de 32k tokens | 251 s, 3/3 fatos | **155 s**, 3/3 fatos |
+| Prompt de 61k tokens | nao cabe em 32k | **339 s**, 3/3 fatos |
+
+O 29/30 aceita a ultima linha como resposta: so 19 das 30 seguiram o formato pedido.
+Das 22 tentativas de Python, 11 falharam por indentacao e 11 estouraram o limite de
+6.000 tokens ainda raciocinando.
+
+### O defeito: indentacao colapsada
+Escrevendo codigo do zero, o modelo usa um unico espaco em todos os niveis, mesmo
+pedindo 4 espacos. Isso quebra Python. Nao e o servidor: ele copia codigo com a
+indentacao certa, continua certo se os primeiros niveis vierem prontos, e o tokenizer
+esta normal.
+
+O modelo original do Jackrong e o `Tema_Q-Abliterated` fazem o mesmo (0/8 cada, todos
+`IndentationError`), entao nao veio da remocao de restricoes. A origem provavel e o
+treino de destilacao, mas isso nao foi comprovado.
+
+### Os GGUFs do heretic nao carregam
+```
+check_tensor_dims: tensor 'blk.32.attn_norm.weight' not found
+```
+Declaram `block_count=33` e `nextn_predict_layers=1`, mas so trazem os blocos 0-31: os
+pesos MTP sairam no heretic e o `config.json` continuou declarando a camada. Afeta todos
+os quants ([discussao](https://huggingface.co/mradermacher/DeepSeek-V4-Pro-Qwen3.5-9B-UNCENSORED-heretic-i1-GGUF/discussions/1)).
+Corrigir so o cabecalho resolve, sem tocar nos pesos: `block_count` 32, remover
+`nextn_predict_layers` e manter as primeiras 32 entradas de `recurrent_layers`. O
+`--override-kv` nao serve porque nao altera o array. Original e Tema_Q carregam sem patch.
+
+## `--cache-ram`: limite obrigatorio nesta placa (07/nov)
+
+O llama-server guarda ate **8 GiB** de cache de prompt na RAM por padrao, e isso soma
+ao GTT, que tambem e RAM. Com o heretic, o processo chegou a 6,8 GiB alem dos ~8 GiB de
+GTT e o OOM global matou 17 processos da sessao (`steamwebhelper`, `pipewire`,
+`dbus-broker`, `llama-server`). O `--memory=11g` da unit nao impediu: o OOM foi global.
+Com `--cache-ram 0`, o pico foi de 417 MB em 1 h de testes, sem OOM (a carga nao foi
+identica, entao e forte indicio, nao prova).
+
+| Coder-30B | Padrao (8 GiB) | `--cache-ram 1024` |
+|---|---|---|
+| Raciocinio / codigo | 24/30 e 18/24 | 24/30 e 18/24 |
+| Geracao | 93 tok/s | 92 tok/s |
+| RAM disponivel | 135 MiB no fim | 363 MiB no pior momento |
+| Pico do processo | nao medido | 1,2 GiB |
+
+Config de producao agora: `--cache-ram 1024`. A folga segue pequena, porque o modelo
+ocupa quase todo o GTT.
+
+> **Processo longo na placa: use `systemd-run`.** O que fica na sessao SSH morre ao
+> desconectar, mesmo com `setsid nohup`, e sem deixar erro no log.
+
+> **Teste modelo novo medindo codigo executado**, nao so tok/s. Esse defeito nao aparece
+> em benchmark de velocidade nem em pergunta de matematica.
